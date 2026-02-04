@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { sessionsApi, weatherApi, Session, Result, Lap, SectorTime, WeatherData } from '../api';
 
 function SessionDetails() {
@@ -13,6 +13,7 @@ function SessionDetails() {
   const [activeTab, setActiveTab] = useState<'results' | 'analysis'>('results');
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [expandedLap, setExpandedLap] = useState<number | null>(null);
+  const [classFilter, setClassFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +88,23 @@ function SessionDetails() {
 
       {activeTab === 'results' && (
         <div className="card">
+          <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <label>Class Filter</label>
+            <select
+              value={classFilter}
+              onChange={(e) => setClassFilter(e.target.value)}
+              style={{ padding: '0.5rem' }}
+            >
+              <option value="all">All</option>
+              {Array.from(new Set(results.map((r) => r.vehicle?.vehicleClass).filter(Boolean) as string[]))
+                .sort((a, b) => a.localeCompare(b, 'de'))
+                .map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+            </select>
+          </div>
           <table>
             <thead>
               <tr>
@@ -97,16 +115,18 @@ function SessionDetails() {
                 <th>Vehicle</th>
                 <th>Laps</th>
                 <th>Best Lap</th>
-                {session.type === 'RACE' && <th>Total Time</th>}
+                {session.type === 'RACE' && <th>Pit Stops</th>}
                 {session.type === 'RACE' && <th>Gap</th>}
               </tr>
             </thead>
             <tbody>
-              {results.map((result) => (
+              {results
+                .filter((result) => classFilter === 'all' || result.vehicle?.vehicleClass === classFilter)
+                .map((result) => (
                 <tr 
                   key={result.id}
                   onClick={() => {
-                    setSelectedTeam(result.teamId);
+                    setSelectedTeam(result.team.id);
                     setActiveTab('analysis');
                   }}
                   style={{ cursor: 'pointer', transition: 'background-color 0.2s' }}
@@ -114,23 +134,36 @@ function SessionDetails() {
                   onMouseOut={(e) => e.currentTarget.style.backgroundColor = ''}
                 >
                   <td className={`position-${result.position}`}>
-                    {result.position}
+                    {result.position ?? result.status ?? '-'}
                   </td>
                   <td>{result.startNumber}</td>
                   <td style={{ fontWeight: 'bold' }}>{result.team.name}</td>
                   <td>
-                    {result.driver.firstName} {result.driver.lastName}
+                    {(() => {
+                      const drivers = laps
+                        .filter((lap) => lap.startNumber === result.startNumber)
+                        .map((lap) => lap.driver)
+                        .filter(Boolean)
+                        .map((driver) => `${driver.firstName} ${driver.lastName}`);
+                      const uniqueDrivers = Array.from(new Set(drivers));
+
+                      if (uniqueDrivers.length > 0) {
+                        return uniqueDrivers.join(', ');
+                      }
+
+                      return `${result.driver.firstName} ${result.driver.lastName}`;
+                    })()}
                   </td>
                   <td>
                     {result.vehicle.model}
                     <br />
                     <small style={{ color: '#888' }}>
-                      {result.vehicle.vehicleClass}
+                      {result.vehicle.vehicleClass || 'N/A'}
                     </small>
                   </td>
-                  <td>{result.laps || '-'}</td>
-                  <td>{result.bestLapTime ? formatTime(result.bestLapTime) : '-'}</td>
-                  {session.type === 'RACE' && <td>{result.totalTime ? formatTime(result.totalTime) : '-'}</td>}
+                  <td>{result.totalLaps || '-'}</td>
+                  <td>{formatTime(result.bestLapTime)}</td>
+                  {session.type === 'RACE' && <td>{result.pitStopCount ?? 0}</td>}
                   {session.type === 'RACE' && <td>{result.gap || '-'}</td>}
                 </tr>
               ))}
@@ -173,10 +206,10 @@ interface TeamLapAnalysisProps {
   laps: Lap[];
   sectors: SectorTime[];
   results: Result[];
-  formatTime: (seconds: number) => string;
+  formatTime: (seconds: number | null | undefined) => string;
   expandedLap: number | null;
   setExpandedLap: (lapNumber: number | null) => void;
-  sessionType: 'QUALI' | 'RACE';
+  sessionType: string;
   weather: WeatherData | null;
 }
 
@@ -188,10 +221,9 @@ function TeamLapAnalysis({
   formatTime,
   expandedLap,
   setExpandedLap,
-  sessionType,
   weather
 }: TeamLapAnalysisProps) {
-  const teamResult = results.find(r => r.teamId === teamId);
+  const teamResult = results.find(r => r.team.id === teamId);
   
   if (!teamResult) {
     return <p>Team not found</p>;
@@ -231,8 +263,10 @@ function TeamLapAnalysis({
     return {
       lap: lapNum,
       position: position,
+      lapTime: teamLapForNum.lapTime,
+      driverName: teamLapForNum.driver ? `${teamLapForNum.driver.firstName} ${teamLapForNum.driver.lastName}` : 'Unknown'
     };
-  }).filter((d): d is { lap: number; position: number } => d !== null);
+  }).filter((d): d is { lap: number; position: number; lapTime: number; driverName: string } => d !== null);
 
   // Debug log
   if (positionData.length > 0) {
@@ -252,23 +286,31 @@ function TeamLapAnalysis({
     }
 
     try {
-      // Use lap number to estimate time into the race (roughly 7-10 min per lap)
-      // Most laps are around 8-9 minutes on the Nürburgring
-      const estimatedLapMinutes = lapNumber * 8.5;
-      
-      // Assume session starts around 09:00-10:00 (morning session)
-      const sessionStartMinutes = 9 * 60; // 09:00 as default
-      const estimatedRaceTime = sessionStartMinutes + estimatedLapMinutes;
-      
-      // Find the closest weather data point
+      const lapWeather = weather.lapWeather?.find((entry) => entry.lapNumber === lapNumber);
+      if (lapWeather) {
+        const temp = lapWeather.temperature;
+        const precipitation = lapWeather.precipitation;
+        const raining = precipitation ? precipitation > 0.1 : false;
+        return {
+          temp: temp !== null ? Math.round(temp * 10) / 10 : null,
+          precipitation: precipitation !== null ? Math.round(precipitation * 10) / 10 : null,
+          raining
+        };
+      }
+
+      // Fallback to closest hourly value if lapWeather is not available
       let closestIndex = 0;
       let closestDiff = Infinity;
-      
+
+      const estimatedLapMinutes = lapNumber * 8.5;
+      const sessionStartMinutes = 9 * 60;
+      const estimatedRaceTime = sessionStartMinutes + estimatedLapMinutes;
+
       for (let i = 0; i < weather.hourly.time.length; i++) {
         const timeStr = weather.hourly.time[i];
         const [hours, minutes] = timeStr.split(':').map(Number);
         const weatherMinutes = hours * 60 + minutes;
-        
+
         const diff = Math.abs(weatherMinutes - estimatedRaceTime);
         if (diff < closestDiff) {
           closestDiff = diff;
@@ -312,7 +354,8 @@ function TeamLapAnalysis({
   const lapTimesData = teamLaps.map(lap => ({
     lap: lap.lapNumber,
     lapTime: lap.lapTime,
-    lapTimeFormatted: formatTime(lap.lapTime)
+    lapTimeFormatted: formatTime(lap.lapTime),
+    driverName: lap.driver ? `${lap.driver.firstName} ${lap.driver.lastName}` : 'Unknown'
   })).sort((a, b) => a.lap - b.lap);
 
   // Get the final position from the position data (last lap)
@@ -326,10 +369,45 @@ function TeamLapAnalysis({
         {teamResult.team.name} - Position #{finalPosition}
       </h3>
 
+      {/* Position Trend */}
+      {positionData.length > 0 && (
+        <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+          <h4 style={{ color: '#000' }}>Positionsverlauf</h4>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={positionData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="lap" label={{ value: 'Lap', position: 'insideBottomRight', offset: -5 }} />
+              <YAxis
+                reversed
+                label={{ value: 'Position', angle: -90, position: 'insideLeft' }}
+                allowDecimals={false}
+              />
+              <Tooltip
+                formatter={(value, _name, props) => {
+                  const data = props.payload as any;
+                  const lapTime = data?.lapTime ? formatTime(data.lapTime) : '-';
+                  const driver = data?.driverName || '-';
+                  return [`${value}`, `Pos | Driver: ${driver} | Lap: ${lapTime}`];
+                }}
+                labelFormatter={(label) => `Lap ${label}`}
+              />
+              <Line
+                type="monotone"
+                dataKey="position"
+                stroke="#3498db"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {/* Lap Times Graph */}
       {lapTimesData.length > 0 && (
         <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-          <h4>Lap Times</h4>
+          <h4 style={{ color: '#000' }}>Lap Times</h4>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={lapTimesData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -338,9 +416,10 @@ function TeamLapAnalysis({
                 label={{ value: 'Lap Time (s)', angle: -90, position: 'insideLeft' }}
               />
               <Tooltip 
-                formatter={(value) => {
+                formatter={(value, _name, props) => {
                   const seconds = value as number;
-                  return formatTime(seconds);
+                  const driver = (props.payload as any)?.driverName || '-';
+                  return [formatTime(seconds), `Driver: ${driver}`];
                 }}
                 labelFormatter={(label) => `Lap ${label}`}
               />
@@ -399,6 +478,8 @@ function TeamLapAnalysis({
                   <th style={{ color: '#fff' }}>Status</th>
                   <th style={{ color: '#fff' }}>🌡️ Temp</th>
                   <th style={{ color: '#fff' }}>🌧️ Rain</th>
+                  <th style={{ color: '#fff' }}>Pit</th>
+                  <th style={{ color: '#fff' }}>Pit Time</th>
                   <th style={{ width: '30px', color: '#fff' }}>Sectors</th>
                 </tr>
               </thead>
@@ -445,6 +526,14 @@ function TeamLapAnalysis({
                               const w = getWeatherForLap(lap.lapNumber);
                               return w.raining ? `🌧️ ${w.precipitation}mm` : '☀️ Dry';
                             })()}
+                          </td>
+                          <td style={{ color: '#000' }}>
+                            {lap.inPit ? '✅' : '—'}
+                          </td>
+                          <td style={{ color: '#000' }}>
+                            {lap.pitDuration !== null && lap.pitDuration !== undefined
+                              ? formatTime(lap.pitDuration)
+                              : '—'}
                           </td>
                           <td>
                             <button

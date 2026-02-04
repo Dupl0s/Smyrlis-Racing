@@ -8,6 +8,11 @@ function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const getNlsNumber = (name: string): number => {
+    const match = name.match(/\bNLS\s*(\d+)\b/i) || name.match(/\bNLS(\d+)\b/i);
+    return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -50,7 +55,9 @@ function Dashboard() {
           return acc;
         }, {} as Record<string, { quali: Session | null; race: Session | null }>);
 
-        return Object.entries(groupedSessions).map(([groupName, { quali, race }]) => (
+        return Object.entries(groupedSessions)
+          .sort(([aName], [bName]) => getNlsNumber(aName) - getNlsNumber(bName))
+          .map(([groupName, { quali, race }]) => (
           <div key={groupName}>
             {/* Group Separator */}
             <div style={{

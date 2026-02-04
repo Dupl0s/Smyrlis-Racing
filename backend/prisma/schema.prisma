@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -31,6 +31,8 @@ model Driver {
   results           Result[]
   laps              Lap[]
   sectorTimes       SectorTime[]
+
+  @@index([startNumber])
 }
 
 model Team {
@@ -70,6 +72,7 @@ model Result {
   interval          String?
   bestLapTime       Float?   // in seconds
   bestLapNumber     Int?
+  status            String?
   createdAt         DateTime @default(now())
 
   session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)

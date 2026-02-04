@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:4000/api';
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -35,7 +35,7 @@ export interface Team {
 export interface Vehicle {
   id: string;
   model: string;
-  class: string;
+  vehicleClass: string;
   classShort: string | null;
 }
 
@@ -52,6 +52,8 @@ export interface Result {
   driver: Driver;
   team: Team;
   vehicle: Vehicle;
+  status?: string | null;
+  pitStopCount?: number;
 }
 
 export interface Lap {
@@ -64,6 +66,8 @@ export interface Lap {
   driver: Driver;
   team: Team;
   vehicle: Vehicle;
+  inPit?: boolean;
+  pitDuration?: number | null;
 }
 
 export interface SectorTime {
@@ -82,12 +86,30 @@ export interface SectorTime {
 export interface WeatherData {
   date: string;
   location: string;
+  points?: Array<{
+    name: string;
+    latitude: number;
+    longitude: number;
+  }>;
   hourly: {
     time: string[];
-    temperature_2m: number[];
-    precipitation: number[];
+    temperature_2m: Array<number | null>;
+    precipitation: Array<number | null>;
     weather_code: number[];
   };
+  lapWeather?: Array<{
+    lapNumber: number;
+    time: string | null;
+    temperature: number | null;
+    precipitation: number | null;
+    weather_code: number | null;
+    perPoint?: Array<{
+      name: string;
+      temperature: number | null;
+      precipitation: number | null;
+      weather_code: number | null;
+    }>;
+  }>;
 }
 
 export const sessionsApi = {
@@ -108,6 +130,7 @@ export const driversApi = {
   getAll: () => api.get<Driver[]>('/drivers'),
   getById: (id: string) => api.get<Driver>(`/drivers/${id}`),
   getStats: (id: string) => api.get(`/drivers/${id}/stats`),
+  getAvgLaps: (id: string, percent = 3) => api.get(`/drivers/${id}/avg-laps`, { params: { percent } }),
 };
 
 export const teamsApi = {

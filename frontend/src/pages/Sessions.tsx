@@ -8,11 +8,24 @@ function Sessions() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const getNlsNumber = (name: string): number => {
+    const match = name.match(/\bNLS\s*(\d+)\b/i) || name.match(/\bNLS(\d+)\b/i);
+    return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+  };
+
+  const sessionSort = (a: Session, b: Session) => {
+    const nlsDiff = getNlsNumber(a.name) - getNlsNumber(b.name);
+    if (nlsDiff !== 0) return nlsDiff;
+    if (a.name !== b.name) return a.name.localeCompare(b.name, 'de');
+    if (a.type === b.type) return 0;
+    return a.type === 'QUALI' ? -1 : 1;
+  };
+
   useEffect(() => {
     const fetchSessions = async () => {
       try {
         const response = await sessionsApi.getAll();
-        setSessions(response.data);
+        setSessions([...response.data].sort(sessionSort));
       } catch (err) {
         setError('Failed to load sessions');
         console.error(err);

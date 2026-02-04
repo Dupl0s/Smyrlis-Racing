@@ -71,10 +71,20 @@ router.get('/:id/results', async (req, res): Promise<void> => {
       });
     }
 
+    const pitStops = await prisma.pitStop.findMany({
+      where: { sessionId: req.params.id },
+      select: { startNumber: true }
+    });
+    const pitCounts = new Map<number, number>();
+    for (const pit of pitStops) {
+      pitCounts.set(pit.startNumber, (pitCounts.get(pit.startNumber) || 0) + 1);
+    }
+
     // Merge calculated final positions with results
     const resultsWithFinalPosition = results.map(result => ({
       ...result,
-      position: finalPositions.get(result.startNumber) || result.position
+      position: finalPositions.get(result.startNumber) || result.position,
+      pitStopCount: pitCounts.get(result.startNumber) || 0
     }));
 
     // Sort by final position
@@ -107,7 +117,29 @@ router.get('/:id/laps', async (req, res) => {
         { lapNumber: 'asc' }
       ]
     });
-    res.json(laps);
+
+    const pitStops = await prisma.pitStop.findMany({
+      where: { sessionId: req.params.id }
+    });
+
+    const pitMap = new Map<string, { inPit: boolean; duration: number | null }>();
+    for (const pit of pitStops) {
+      pitMap.set(`${pit.startNumber}-${pit.lapNumber}`, {
+        inPit: true,
+        duration: pit.duration ?? null
+      });
+    }
+
+    const lapsWithPit = laps.map((lap) => {
+      const pit = pitMap.get(`${lap.startNumber}-${lap.lapNumber}`);
+      return {
+        ...lap,
+        inPit: pit?.inPit ?? false,
+        pitDuration: pit?.duration ?? null
+      };
+    });
+
+    res.json(lapsWithPit);
   } catch (error) {
     console.error('Error fetching laps:', error);
     res.status(500).json({ error: 'Failed to fetch laps' });
