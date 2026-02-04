@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                String   @id @default(cuid())
+  name              String
+  type              String   // "QUALI" or "RACE"
+  date              DateTime
+  createdAt         DateTime @default(now())
+
+  results           Result[]
+  laps              Lap[]
+  sectorTimes       SectorTime[]
+}
+
+model Driver {
+  id                String   @id @default(cuid())
+  startNumber       Int      @unique
+  firstName         String
+  lastName          String
+  nationality       String?
+  createdAt         DateTime @default(now())
+
+  results           Result[]
+  laps              Lap[]
+  sectorTimes       SectorTime[]
+}
+
+model Team {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  createdAt         DateTime @default(now())
+
+  results           Result[]
+  vehicles          Vehicle[]
+}
+
+model Vehicle {
+  id                String   @id @default(cuid())
+  model             String
+  vehicleClass      String
+  teamId            String
+  createdAt         DateTime @default(now())
+
+  team              Team     @relation(fields: [teamId], references: [id])
+  results           Result[]
+  laps              Lap[]
+  sectorTimes       SectorTime[]
+}
+
+model Result {
+  id                String   @id @default(cuid())
+  sessionId         String
+  driverId          String
+  teamId            String
+  vehicleId         String
+  startNumber       Int
+  position          Int?
+  laps              Int?
+  totalTime         Float?   // in seconds
+  gap               String?
+  interval          String?
+  bestLapTime       Float?   // in seconds
+  bestLapNumber     Int?
+  createdAt         DateTime @default(now())
+
+  session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  driver            Driver   @relation(fields: [driverId], references: [id])
+  team              Team     @relation(fields: [teamId], references: [id])
+  vehicle           Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  @@index([sessionId])
+  @@index([driverId])
+  @@index([startNumber])
+}
+
+model Lap {
+  id                String   @id @default(cuid())
+  sessionId         String
+  driverId          String
+  vehicleId         String
+  startNumber       Int
+  lapNumber         Int
+  lapTime           Float    // in seconds
+  createdAt         DateTime @default(now())
+
+  session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  driver            Driver   @relation(fields: [driverId], references: [id])
+  vehicle           Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  @@index([sessionId])
+  @@index([driverId])
+  @@index([startNumber])
+}
+
+model SectorTime {
+  id                String   @id @default(cuid())
+  sessionId         String
+  driverId          String
+  vehicleId         String
+  startNumber       Int
+  lapNumber         Int
+  sector1           Float?   // in seconds
+  sector2           Float?   // in seconds
+  sector3           Float?   // in seconds
+  sector4           Float?   // in seconds
+  sector5           Float?   // in seconds
+  createdAt         DateTime @default(now())
+
+  session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  driver            Driver   @relation(fields: [driverId], references: [id])
+  vehicle           Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  @@index([sessionId])
+  @@index([driverId])
+  @@index([startNumber])
+}

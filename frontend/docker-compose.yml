@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://localhost:4000/api
+    restart: unless-stopped
+    networks:
+      - racing-network
+
+networks:
+  racing-network:
+    driver: bridge

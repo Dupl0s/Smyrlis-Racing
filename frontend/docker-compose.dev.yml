@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:4000/api
+    restart: unless-stopped
+    networks:
+      - racing-network
+
+networks:
+  racing-network:
+    driver: bridge
